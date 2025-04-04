@@ -10,7 +10,11 @@ import base64
 
 
 app = Flask(__name__) # Instance of flask app 
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+#CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+CORS(app, resources={r"/*": {"origins": [
+    "http://localhost:5173",
+    "https://brendanamuh.github.io"
+]}})
 
 socketio = SocketIO(app, cors_allowed_origins="*") # Allow real-time communication in app
 
