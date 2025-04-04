@@ -14,7 +14,7 @@ app = Flask(__name__) # Instance of flask app
 CORS(app, resources={r"/*": {"origins": [
     "http://localhost:5173",
     "https://brendanamuh.github.io"
-]}})
+]}}, supports_credentials=True)
 
 socketio = SocketIO(app, cors_allowed_origins="*") # Allow real-time communication in app
 
@@ -70,92 +70,95 @@ Yields frames
 '''
 
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['POST','OPTIONS'])
 def predict():
-    predicted_character = ''
-    expected_features = model.n_features_in_
-
-    data = request.get_json()
-    image_data = data['image'].split(',')[1]  # Strip header
-    image_bytes = base64.b64decode(image_data)
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    data_aux = []
-    x_ = []
-    y_= []
-    H,W,_ = frame.shape
-        
-    # Converts frame to rgb format 
-    frame_rgb = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)  
-
-    # Detect landmarks (hands) in image
-    results = hands.process(frame_rgb) 
-    
-    
-    # Landmark coordinates lie in results.multi_hand_landmarks 
-    if results.multi_hand_landmarks:
+    if request.method == "OPTIONS":
+        return jsonify({"message": "CORS preflight passed"}), 200
+    else:
         predicted_character = ''
-        for hand_landmarks in results.multi_hand_landmarks:
+        expected_features = model.n_features_in_
+
+        data = request.get_json()
+        image_data = data['image'].split(',')[1]  # Strip header
+        image_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        data_aux = []
+        x_ = []
+        y_= []
+        H,W,_ = frame.shape
             
-            # Draw hand landmark on frame
-            mp_drawing.draw_landmarks(
-                frame,
-                hand_landmarks,
-                mp_hands.HAND_CONNECTIONS,
-                mp_drawing_styles.get_default_hand_landmarks_style(),
-                mp_drawing_styles.get_default_hand_connections_style()
-            )
-            # Extract hand landmark coordinates
-            for coord in  hand_landmarks.landmark:
-                x = coord.x
-                y = coord.y
-                data_aux.append(x)
-                data_aux.append(y)
-                x_.append(x)
-                y_.append(y)
-        #print("Feature count:", len(data_aux))  # Should be 42
-        #print("Expected:", model.n_features_in_)  # Should match 42
+        # Converts frame to rgb format 
+        frame_rgb = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)  
 
+        # Detect landmarks (hands) in image
+        results = hands.process(frame_rgb) 
         
-        # Inputs hand coords into model & Returns predicted character to frontend 
-        try:
-                # Check if feature count matches model expectations
-                if len(data_aux) != expected_features:
-                    raise ValueError(f"Feature mismatch: Expected {expected_features}, but got {len(data_aux)}")
-                prediction = model.predict([np.asarray(data_aux)])
-                predicted_character = labels_dict[int(prediction[0])]
-                print('PREDICTED CHARACHTER: ',predicted_character)
-                    # If 2 second has passed since the last prediction was sent
-                #current_time = time.time()
+        
+        # Landmark coordinates lie in results.multi_hand_landmarks 
+        if results.multi_hand_landmarks:
+            predicted_character = ''
+            for hand_landmarks in results.multi_hand_landmarks:
                 
-                # if current_time - last_sent_time >= 2:
-                #     last_sent_time = current_time  # Update last sent timestamp
+                # Draw hand landmark on frame
+                mp_drawing.draw_landmarks(
+                    frame,
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS,
+                    mp_drawing_styles.get_default_hand_landmarks_style(),
+                    mp_drawing_styles.get_default_hand_connections_style()
+                )
+                # Extract hand landmark coordinates
+                for coord in  hand_landmarks.landmark:
+                    x = coord.x
+                    y = coord.y
+                    data_aux.append(x)
+                    data_aux.append(y)
+                    x_.append(x)
+                    y_.append(y)
+            #print("Feature count:", len(data_aux))  # Should be 42
+            #print("Expected:", model.n_features_in_)  # Should match 42
 
-                #     # Send prediction to frontend
-                #     socketio.emit("prediction", {"character": predicted_character})
+            
+            # Inputs hand coords into model & Returns predicted character to frontend 
+            try:
+                    # Check if feature count matches model expectations
+                    if len(data_aux) != expected_features:
+                        raise ValueError(f"Feature mismatch: Expected {expected_features}, but got {len(data_aux)}")
+                    prediction = model.predict([np.asarray(data_aux)])
+                    predicted_character = labels_dict[int(prediction[0])]
+                    print('PREDICTED CHARACHTER: ',predicted_character)
+                        # If 2 second has passed since the last prediction was sent
+                    #current_time = time.time()
+                    
+                    # if current_time - last_sent_time >= 2:
+                    #     last_sent_time = current_time  # Update last sent timestamp
 
-        except ValueError as e:
-            #print(f"⚠️ Prediction Error: {e}")  # Log error in Flask console
-            #socketio.emit("error", {"message": str(e)})  # Send error to frontend
-            pass
+                    #     # Send prediction to frontend
+                    #     socketio.emit("prediction", {"character": predicted_character})
 
-        
-        # Calculates bounding box around hand landmark 
-        x1,y1= int(min(x_) * W),int(min(y_) * H)   # smallest x value in landmark coords scaled to width of frame 
-        x2,y2= int(max(x_) * W), int(max(y_) * H)
-        
-        #Draw rectangle around landmark 
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 4)
-        
-        # Add text above rectangle
-        cv2.putText(frame, predicted_character, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3,
-                    cv2.LINE_AA)
+            except ValueError as e:
+                #print(f"⚠️ Prediction Error: {e}")  # Log error in Flask console
+                #socketio.emit("error", {"message": str(e)})  # Send error to frontend
+                pass
 
-    # Run prediction here (use your model and logic)
-    #predicted_character = "A"  # Example placeholder
+            
+            # Calculates bounding box around hand landmark 
+            x1,y1= int(min(x_) * W),int(min(y_) * H)   # smallest x value in landmark coords scaled to width of frame 
+            x2,y2= int(max(x_) * W), int(max(y_) * H)
+            
+            #Draw rectangle around landmark 
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 4)
+            
+            # Add text above rectangle
+            cv2.putText(frame, predicted_character, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3,
+                        cv2.LINE_AA)
 
-    return jsonify({'character': predicted_character})
+        # Run prediction here (use your model and logic)
+        #predicted_character = "A"  # Example placeholder
+
+        return jsonify({'character': predicted_character})
 
 if __name__ == '__main__':
     socketio.run(app)
