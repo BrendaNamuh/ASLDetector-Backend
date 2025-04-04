@@ -7,6 +7,8 @@ import pickle
 import numpy as np
 import time
 import base64
+from flask import make_response
+
 
 
 app = Flask(__name__) # Instance of flask app 
@@ -73,7 +75,12 @@ Yields frames
 @app.route('/predict', methods=['POST','OPTIONS'])
 def predict():
     if request.method == "OPTIONS":
-        return jsonify({"message": "CORS preflight passed"}), 200
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        return response
+        #return jsonify({"message": "CORS preflight passed"}), 200
     else:
         predicted_character = ''
         expected_features = model.n_features_in_
@@ -157,7 +164,10 @@ def predict():
 
         # Run prediction here (use your model and logic)
         #predicted_character = "A"  # Example placeholder
-
+        
+        response = jsonify({'character': predicted_character})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
         return jsonify({'character': predicted_character})
 
 if __name__ == '__main__':
